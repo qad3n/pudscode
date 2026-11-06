@@ -1,0 +1,17 @@
+edition = "2024"
+unstable_features = true
+max_width = 120
+use_small_heuristics = "Max"
+single_line_if_else_max_width = 50
+tab_spaces = 4
+newline_style = "Unix"
+brace_style = "AlwaysNextLine"
+control_brace_style = "AlwaysNextLine"
+fn_single_line = true
+where_single_line = true
+empty_item_single_line = true
+hex_literal_case = "Upper"
+imports_granularity = "Module"
+group_imports = "One"
+use_field_init_shorthand = true
+blank_lines_upper_bound = 1

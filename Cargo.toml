@@ -1,0 +1,18 @@
+[package]
+name = "pudscode"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The paulscode SoundSystem API on cpal and lewton"
+
+[dependencies]
+cpal = "0.18.2"
+lewton = "0.10.2"
+thiserror = "2"
+
+[lints.rust]
+non_snake_case = "allow"
+
+[lints.clippy]
+new_without_default = "allow"
+too_many_arguments = "allow"
