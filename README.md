@@ -1,8 +1,8 @@
 # pudscode
 
-A small sound engine with the API of paulscode SoundSystem, the library Minecraft Beta 1.7.3 plays its sounds through. It is built on [cpal](https://crates.io/crates/cpal) for device output and [lewton](https://crates.io/crates/lewton) for Vorbis decoding, so it needs nothing extra installed on Linux or Windows.
+A small general-purpose sound engine for games, with the API of paulscode SoundSystem. It was written for the Minecraft Beta 1.7.3 Rust rewrite, which plays its sounds through that API, but nothing in it is tied to Minecraft: any game can load and play its own Ogg Vorbis sounds and music through it. It is built on [cpal](https://crates.io/crates/cpal) for device output and [lewton](https://crates.io/crates/lewton) for Vorbis decoding, so it needs nothing extra installed on Linux or Windows.
 
-It copies the parts of paulscode with LWJGL OpenAL that the game relies on:
+It copies the parts of paulscode with LWJGL OpenAL that Beta 1.7.3 relies on:
 
 - 28 normal and 4 streaming channels, chosen and stolen by the same rules as `Library.getNextChannel`
 - linear distance fade (attenuation model 2), volume clamped to 0..1 and pitch to 0.5..2
