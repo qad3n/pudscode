@@ -24,7 +24,7 @@ impl Engine
             Ok(output) => output,
             Err(error) =>
             {
-                eprintln!("Sound output unavailable, sound stays silent: {error}");
+                log::error!("Sound output unavailable, sound stays silent: {error}");
                 return None;
             }
         };
@@ -38,7 +38,7 @@ impl Engine
             Ok(worker) => Some(Engine { m_mixer: mixer, m_commands: commands, m_worker: worker, m_output: output }),
             Err(error) =>
             {
-                eprintln!("Could not start the sound thread, sound stays silent: {error}");
+                log::error!("Could not start the sound thread, sound stays silent: {error}");
                 None
             }
         }
@@ -49,9 +49,10 @@ impl Engine
         let Engine { m_mixer: _, m_commands, m_worker, m_output } = self;
         drop(m_output);
         drop(m_commands);
-        if m_worker.join().is_err()
+        match m_worker.join()
         {
-            eprintln!("Sound thread panicked during cleanup");
+            Ok(()) => log::debug!("Sound engine stopped"),
+            Err(_) => log::error!("Sound thread panicked during cleanup"),
         }
     }
 }
@@ -161,7 +162,7 @@ impl SoundSystem
         };
         if let Err(error) = engine.m_commands.send(command)
         {
-            eprintln!("Sound command dropped: {error}");
+            log::warn!("Sound command dropped: {error}");
         }
     }
 }

@@ -8,6 +8,7 @@ description = "General-purpose game sound engine with the paulscode SoundSystem 
 [dependencies]
 cpal = "0.18.2"
 lewton = "0.10.2"
+log = "0.4"
 thiserror = "2"
 
 [lints.rust]

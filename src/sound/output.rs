@@ -17,6 +17,10 @@ pub fn open(mixer: SharedMixer) -> Result<Stream, OutputError>
     let config: StreamConfig = device.default_output_config()?.config();
     let channels: usize = config.channels as usize;
     let rate: u32 = config.sample_rate;
+    let name: String = device
+        .description()
+        .map_or_else(|error| format!("unnamed device ({error})"), |description| description.name().to_owned());
+    log::info!("Sound output on {name} at {rate} Hz with {channels} channels");
     let mut mixed: Vec<f32> = Vec::new();
     let stream: Stream = device.build_output_stream::<f32, _, _>(
         config,
@@ -28,7 +32,7 @@ pub fn open(mixer: SharedMixer) -> Result<Stream, OutputError>
                 writeFrame(frame, stereo);
             }
         },
-        |error| eprintln!("Sound output error: {error}"),
+        |error| log::error!("Sound output error: {error}"),
         None,
     )?;
     stream.play()?;

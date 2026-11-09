@@ -65,7 +65,7 @@ impl Stream
             Ok(ended) => ended && !self.restart(),
             Err(error) =>
             {
-                eprintln!("Error streaming {}: {error}", self.m_file.m_identifier);
+                log::error!("Error streaming {}: {error}", self.m_file.m_identifier);
                 true
             }
         };
@@ -88,7 +88,7 @@ impl Stream
             }
             Err(error) =>
             {
-                eprintln!("Error restarting {}: {error}", self.m_file.m_identifier);
+                log::error!("Error restarting {}: {error}", self.m_file.m_identifier);
                 false
             }
         }
@@ -161,7 +161,7 @@ impl Worker
             Ok(pcm) => Some(Arc::new(pcm)),
             Err(error) =>
             {
-                eprintln!("Error loading {identifier}: {error}");
+                log::error!("Error loading {identifier}: {error}");
                 None
             }
         };
@@ -182,10 +182,11 @@ impl Worker
             Ok(decoder) => decoder,
             Err(error) =>
             {
-                eprintln!("Error opening stream {}: {error}", file.m_identifier);
+                log::error!("Error opening stream {}: {error}", file.m_identifier);
                 return;
             }
         };
+        log::debug!("Streaming {} on {name}", file.m_identifier);
         let started: Option<(usize, u64)> = self.mixer().play(name, Some(decoder.format()));
         if let Some((voice, sourceId)) = started
         {
