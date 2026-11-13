@@ -29,6 +29,7 @@ pub enum Command
 {
     NewSource(SourceSpec),
     Play(String),
+    PlayFrom(String, f32),
     Stop(String),
     SetVolume(String, f32),
     SetPitch(String, f32),
@@ -127,7 +128,8 @@ impl Worker
         match command
         {
             Command::NewSource(spec) => self.newSource(spec),
-            Command::Play(name) => self.play(&name),
+            Command::Play(name) => self.play(&name, 0.0),
+            Command::PlayFrom(name, seconds) => self.play(&name, seconds),
             Command::Stop(name) => self.mixer().stop(&name),
             Command::SetVolume(name, volume) => self.mixer().setVolume(&name, volume),
             Command::SetPitch(name, pitch) => self.mixer().setPitch(&name, pitch),
@@ -168,7 +170,7 @@ impl Worker
         self.m_buffers.entry(identifier.to_owned()).or_insert_with(decode).clone()
     }
 
-    fn play(&mut self, name: &str)
+    fn play(&mut self, name: &str, start: f32)
     {
         let opened: Option<(StreamFile, bool)> = self.mixer().streamToOpen(name);
         let Some((file, toLoop)) = opened
@@ -177,7 +179,16 @@ impl Worker
             self.mixer().play(name, None);
             return;
         };
-        let decoder: Decoder = match Decoder::open(&file.m_url, &file.m_identifier)
+        let decoded: Result<Decoder, decode::DecodeError> =
+            Decoder::open(&file.m_url, &file.m_identifier).and_then(|mut decoder|
+            {
+                if start > 0.0
+                {
+                    decoder.seek(start)?;
+                }
+                Ok(decoder)
+            });
+        let decoder: Decoder = match decoded
         {
             Ok(decoder) => decoder,
             Err(error) =>

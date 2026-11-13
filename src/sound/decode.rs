@@ -61,6 +61,14 @@ impl Decoder
 
     pub fn format(&self) -> Format { self.m_format }
 
+    // lewton lands on the start of the page holding the sample so every listener seeking the same spot hears the same
+    pub fn seek(&mut self, seconds: f32) -> Result<(), DecodeError>
+    {
+        let granule: u64 = (f64::from(seconds.max(0.0)) * f64::from(self.m_format.m_rate)) as u64;
+        self.m_reader.seek_absgp_pg(granule)?;
+        Ok(())
+    }
+
     pub fn read(&mut self, samples: &mut Vec<f32>, minSamples: usize) -> Result<bool, DecodeError>
     {
         let target: usize = samples.len() + minSamples;

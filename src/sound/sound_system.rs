@@ -81,6 +81,12 @@ impl SoundSystem
 
     pub fn play(&self, sourcename: &str) { self.send(Command::Play(sourcename.to_owned())); }
 
+    // a stream starts this many seconds in and a static source plays from its start
+    pub fn playFrom(&self, sourcename: &str, seconds: f32)
+    {
+        self.send(Command::PlayFrom(sourcename.to_owned(), seconds));
+    }
+
     pub fn stop(&self, sourcename: &str) { self.send(Command::Stop(sourcename.to_owned())); }
 
     pub fn setVolume(&self, sourcename: &str, value: f32)
@@ -142,7 +148,8 @@ impl SoundSystem
 
     fn sendSource(&self, priority: bool, stream: bool, name: &str, url: &str, identifier: &str, params: Params)
     {
-        self.send(Command::NewSource(SourceSpec {
+        self.send(Command::NewSource(SourceSpec
+        {
             m_name: name.to_owned(),
             m_priority: priority,
             m_stream: stream,
