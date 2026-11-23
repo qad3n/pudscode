@@ -12,3 +12,8 @@ It copies the parts of paulscode with LWJGL OpenAL that Beta 1.7.3 relies on:
 Mono sounds are panned with equal-power stereo panning, which approximates OpenAL. Stereo sounds play unpanned. Without an output device the engine stays silent and logs one line.
 
 Codecs are registered with `SoundSystemConfig::setCodec`. Ogg Vorbis is decoded directly. `SoundSystemConfig::registerStreamFilter` lets a codec class transform the file bytes before Vorbis decoding, which is how a client adds formats such as `.mus`. WAV is not supported.
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your
+option.
