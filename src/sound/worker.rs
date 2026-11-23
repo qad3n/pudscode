@@ -1,28 +1,26 @@
-use super::decode::{self, Decoder, Pcm};
-use super::math::Vector;
-use super::mixer::{self, Mixer, Params, SharedMixer, SourceData, StreamFile};
+use super::load;
+use crate::decode::{Sound, Source};
+use crate::engine::Engine;
+use crate::play::{Play, Voice};
 use std::collections::HashMap;
-use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
-mod streaming
+pub type Attached = Arc<Mutex<HashMap<String, Voice>>>;
+
+pub fn lock(attached: &Attached) -> MutexGuard<'_, HashMap<String, Voice>>
 {
-    use std::time::Duration;
-
-    pub const BUFFER_BYTES: usize = 131072;
-    pub const BYTES_PER_SAMPLE: usize = 2;
-    pub const BUFFERS: usize = 3;
-    pub const POLL_INTERVAL: Duration = Duration::from_millis(20);
+    attached.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 pub struct SourceSpec
 {
     pub m_name: String,
-    pub m_priority: bool,
     pub m_stream: bool,
     pub m_url: String,
     pub m_identifier: String,
-    pub m_params: Params,
+    pub m_play: Play,
 }
 
 pub enum Command
@@ -33,96 +31,48 @@ pub enum Command
     Stop(String),
     SetVolume(String, f32),
     SetPitch(String, f32),
-    ListenerPosition(Vector),
-    ListenerOrientation(Vector, Vector),
+    ListenerPosition([f32; 3]),
+    ListenerOrientation([f32; 3], [f32; 3]),
 }
 
-struct Stream
+enum Data
 {
-    m_voice: usize,
-    m_sourceId: u64,
-    m_file: StreamFile,
-    m_loop: bool,
-    m_decoder: Decoder,
+    Static(Sound),
+    Stream
+    {
+        url: String,
+        identifier: String,
+    },
 }
 
-impl Stream
+struct Named
 {
-    fn feed(&mut self, mixer: &Mutex<Mixer>) -> bool
-    {
-        let chunkSamples: usize = streaming::BUFFER_BYTES / streaming::BYTES_PER_SAMPLE;
-        let Some(queued) = mixer::lock(mixer).streamQueued(self.m_voice, self.m_sourceId)
-        else
-        {
-            return false;
-        };
-        if queued >= chunkSamples * streaming::BUFFERS
-        {
-            return true;
-        }
-        let mut samples: Vec<f32> = Vec::with_capacity(chunkSamples);
-        let ended: bool = match self.m_decoder.read(&mut samples, chunkSamples)
-        {
-            Ok(ended) => ended && !self.restart(),
-            Err(error) =>
-            {
-                log::error!("Error streaming {}: {error}", self.m_file.m_identifier);
-                true
-            }
-        };
-        mixer::lock(mixer).appendStream(self.m_voice, self.m_sourceId, &samples, ended);
-        !ended
-    }
-
-    fn restart(&mut self) -> bool
-    {
-        if !self.m_loop
-        {
-            return false;
-        }
-        match Decoder::open(&self.m_file.m_url, &self.m_file.m_identifier)
-        {
-            Ok(decoder) =>
-            {
-                self.m_decoder = decoder;
-                true
-            }
-            Err(error) =>
-            {
-                log::error!("Error restarting {}: {error}", self.m_file.m_identifier);
-                false
-            }
-        }
-    }
+    m_play: Play,
+    m_data: Data,
+    // the channel this name last played on which a new source of the same name takes over
+    m_voice: Option<Voice>,
 }
 
 struct Worker
 {
-    m_mixer: SharedMixer,
-    m_buffers: HashMap<String, Option<Arc<Pcm>>>,
-    m_streams: Vec<Stream>,
+    m_engine: Arc<Engine>,
+    m_attached: Attached,
+    m_sources: HashMap<String, Named>,
+    m_buffers: HashMap<String, Option<Sound>>,
 }
 
-pub fn run(mixer: SharedMixer, commands: Receiver<Command>)
+pub fn run(engine: Arc<Engine>, attached: Attached, commands: Receiver<Command>)
 {
-    let mut worker: Worker = Worker { m_mixer: mixer, m_buffers: HashMap::new(), m_streams: Vec::new() };
-    loop
+    let mut worker: Worker =
+        Worker { m_engine: engine, m_attached: attached, m_sources: HashMap::new(), m_buffers: HashMap::new() };
+    while let Ok(command) = commands.recv()
     {
-        match commands.recv_timeout(streaming::POLL_INTERVAL)
-        {
-            Ok(command) => worker.execute(command),
-            Err(RecvTimeoutError::Timeout) =>
-            {}
-            Err(RecvTimeoutError::Disconnected) => return,
-        }
-        worker.feedStreams();
+        worker.execute(command);
     }
 }
 
 impl Worker
 {
-    fn mixer(&self) -> MutexGuard<'_, Mixer> { mixer::lock(&self.m_mixer) }
-
     fn execute(&mut self, command: Command)
     {
         match command
@@ -130,37 +80,39 @@ impl Worker
             Command::NewSource(spec) => self.newSource(spec),
             Command::Play(name) => self.play(&name, 0.0),
             Command::PlayFrom(name, seconds) => self.play(&name, seconds),
-            Command::Stop(name) => self.mixer().stop(&name),
-            Command::SetVolume(name, volume) => self.mixer().setVolume(&name, volume),
-            Command::SetPitch(name, pitch) => self.mixer().setPitch(&name, pitch),
-            Command::ListenerPosition(position) => self.mixer().setListenerPosition(position),
-            Command::ListenerOrientation(at, up) => self.mixer().setListenerOrientation(at, up),
+            Command::Stop(name) => self.stop(&name),
+            Command::SetVolume(name, volume) => self.update(&name, |play| play.m_volume = volume),
+            Command::SetPitch(name, pitch) => self.update(&name, |play| play.m_pitch = pitch),
+            Command::ListenerPosition(position) => self.m_engine.setListenerPosition(position),
+            Command::ListenerOrientation(at, up) => self.m_engine.setListenerOrientation(at, up),
         }
     }
 
     fn newSource(&mut self, spec: SourceSpec)
     {
-        let data: SourceData = if spec.m_stream
+        let data: Data = if spec.m_stream
         {
-            SourceData::Stream(StreamFile { m_url: spec.m_url, m_identifier: spec.m_identifier })
+            Data::Stream { url: spec.m_url, identifier: spec.m_identifier }
         }
         else
         {
-            let Some(pcm) = self.buffer(&spec.m_url, &spec.m_identifier)
+            let Some(sound) = self.buffer(&spec.m_url, &spec.m_identifier)
             else
             {
                 return;
             };
-            SourceData::Static(pcm)
+            Data::Static(sound)
         };
-        self.mixer().newSource(spec.m_name, spec.m_priority, spec.m_params, data);
+        let voice: Option<Voice> = self.m_sources.get(&spec.m_name).and_then(|named| named.m_voice);
+        lock(&self.m_attached).remove(&spec.m_name);
+        self.m_sources.insert(spec.m_name, Named { m_play: spec.m_play, m_data: data, m_voice: voice });
     }
 
-    fn buffer(&mut self, url: &str, identifier: &str) -> Option<Arc<Pcm>>
+    fn buffer(&mut self, url: &str, identifier: &str) -> Option<Sound>
     {
-        let decode = || match decode::decodeAll(url, identifier)
+        let decode = || match load::sound(url, identifier)
         {
-            Ok(pcm) => Some(Arc::new(pcm)),
+            Ok(sound) => Some(sound),
             Err(error) =>
             {
                 log::error!("Error loading {identifier}: {error}");
@@ -172,45 +124,84 @@ impl Worker
 
     fn play(&mut self, name: &str, start: f32)
     {
-        let opened: Option<(StreamFile, bool)> = self.mixer().streamToOpen(name);
-        let Some((file, toLoop)) = opened
+        if self.attached(name).is_some()
+        {
+            return;
+        }
+
+        let Some(named) = self.m_sources.get(name)
         else
         {
-            self.mixer().play(name, None);
             return;
         };
-        let decoded: Result<Decoder, decode::DecodeError> =
-            Decoder::open(&file.m_url, &file.m_identifier).and_then(|mut decoder|
-            {
-                if start > 0.0
-                {
-                    decoder.seek(start)?;
-                }
-                Ok(decoder)
-            });
-        let decoder: Decoder = match decoded
+
+        let play: Play = Play { m_replace: named.m_voice, ..named.m_play };
+        let voice: Option<Voice> = match &named.m_data
         {
-            Ok(decoder) => decoder,
+            Data::Static(sound) => self.m_engine.play(sound, play),
+            Data::Stream { url, identifier } => self.stream(name, url, identifier, Play { m_startAt: start, ..play }),
+        };
+        let Some(voice) = voice
+        else
+        {
+            return;
+        };
+
+        if let Some(named) = self.m_sources.get_mut(name)
+        {
+            named.m_voice = Some(voice);
+        }
+        lock(&self.m_attached).insert(name.to_owned(), voice);
+    }
+
+    fn stream(&self, name: &str, url: &str, identifier: &str, play: Play) -> Option<Voice>
+    {
+        let started: Result<Option<Voice>, load::LoadError> =
+            load::source(url, identifier).and_then(|source: Source| Ok(self.m_engine.stream(&source, play)?));
+        match started
+        {
+            Ok(voice) =>
+            {
+                log::debug!("Streaming {identifier} on {name}");
+                voice
+            }
             Err(error) =>
             {
-                log::error!("Error opening stream {}: {error}", file.m_identifier);
-                return;
+                log::error!("Error opening stream {identifier}: {error}");
+                None
             }
-        };
-        log::debug!("Streaming {} on {name}", file.m_identifier);
-        let started: Option<(usize, u64)> = self.mixer().play(name, Some(decoder.format()));
-        if let Some((voice, sourceId)) = started
-        {
-            self.m_streams.retain(|stream| stream.m_voice != voice);
-            let stream: Stream =
-                Stream { m_voice: voice, m_sourceId: sourceId, m_file: file, m_loop: toLoop, m_decoder: decoder };
-            self.m_streams.push(stream);
         }
     }
 
-    fn feedStreams(&mut self)
+    fn stop(&self, name: &str)
     {
-        let mixer: &Mutex<Mixer> = &self.m_mixer;
-        self.m_streams.retain_mut(|stream| stream.feed(mixer));
+        if let Some(voice) = self.attached(name)
+        {
+            self.m_engine.stop(voice, Duration::ZERO);
+        }
+    }
+
+    // paulscode keeps the value on the source so it holds for the next play too
+    fn update(&mut self, name: &str, change: impl Fn(&mut Play))
+    {
+        let voice: Option<Voice> = self.attached(name);
+        let Some(named) = self.m_sources.get_mut(name)
+        else
+        {
+            return;
+        };
+
+        change(&mut named.m_play);
+        if let Some(voice) = voice
+        {
+            self.m_engine.setVolume(voice, named.m_play.m_volume);
+            self.m_engine.setPitch(voice, named.m_play.m_pitch);
+        }
+    }
+
+    fn attached(&self, name: &str) -> Option<Voice>
+    {
+        let voice: Voice = lock(&self.m_attached).get(name).copied()?;
+        self.m_engine.playing(voice).then_some(voice)
     }
 }

@@ -1,7 +1,4 @@
-mod decode;
-mod math;
-mod mixer;
-mod output;
+mod load;
 mod sound_system;
 mod sound_system_config;
 mod worker;

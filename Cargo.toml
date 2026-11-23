@@ -1,13 +1,18 @@
 [package]
 name = "pudscode"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 publish = false
 license = "MIT OR Apache-2.0"
-description = "General-purpose game sound engine with the paulscode SoundSystem API on cpal and lewton"
+description = "General-purpose game sound engine on cpal with Ogg Vorbis and WAV decoding"
+
+[features]
+wav = ["dep:hound"]
+paulscode = []
 
 [dependencies]
 cpal = "0.18.2"
+hound = { version = "3.5", optional = true }
 lewton = "0.10.2"
 log = "0.4"
 thiserror = "2"
