@@ -36,7 +36,8 @@ impl Params
 {
     pub fn new(position: Vector, attModel: i32, distOrRoll: f32, toLoop: bool) -> Params
     {
-        Params {
+        Params
+        {
             m_position: position,
             m_attModel: attModel,
             m_distOrRoll: distOrRoll,
@@ -194,7 +195,8 @@ impl Playback
                 index
             };
             let fraction: f32 = (self.m_cursor - index as f64) as f32;
-            let sample = |channel: usize| {
+            let sample = |channel: usize|
+            {
                 math::lerp(
                     self.m_samples.get(index * channels + channel),
                     self.m_samples.get(next * channels + channel),
@@ -252,7 +254,8 @@ impl Mixer
     {
         let voices: Vec<Voice> =
             (0..NORMAL_CHANNELS + STREAMING_CHANNELS).map(|_| Voice { m_sourceName: None, m_playback: None }).collect();
-        Mixer {
+        Mixer
+        {
             m_sources: HashMap::new(),
             m_voices: voices,
             m_nextNormal: 0,
@@ -299,7 +302,8 @@ impl Mixer
             (SourceData::Stream(_), None) => return None,
         };
         let sourceId: u64 = source.m_id;
-        let playback: Playback = Playback {
+        let playback: Playback = Playback
+        {
             m_sourceId: sourceId,
             m_params: source.m_params,
             m_format: format,

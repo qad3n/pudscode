@@ -24,7 +24,8 @@ pub fn open(mixer: SharedMixer) -> Result<Stream, OutputError>
     let mut mixed: Vec<f32> = Vec::new();
     let stream: Stream = device.build_output_stream::<f32, _, _>(
         config,
-        move |data, _| {
+        move |data, _|
+        {
             mixed.resize(data.len() / channels * MIXED_CHANNELS, 0.0);
             mixer::lock(&mixer).mix(&mut mixed, rate);
             for (frame, stereo) in data.chunks_exact_mut(channels).zip(mixed.as_chunks::<MIXED_CHANNELS>().0)
