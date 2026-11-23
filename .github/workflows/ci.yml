@@ -33,12 +33,18 @@ jobs:
       - run: cargo +nightly fmt --check
 
   check:
-    name: Clippy and test (${{ matrix.features }})
+    name: Clippy and test (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        features: [default, wav, paulscode]
+        include:
+          - name: default
+            flags: ""
+          - name: wav
+            flags: --features=wav
+          - name: paulscode
+            flags: --features=paulscode
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
@@ -48,6 +54,6 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          key: ${{ matrix.features }}
-      - run: cargo clippy --all-targets --features=${{ matrix.features }} -- -D warnings
-      - run: cargo test --features=${{ matrix.features }}
+          key: ${{ matrix.name }}
+      - run: cargo clippy --all-targets ${{ matrix.flags }} -- -D warnings
+      - run: cargo test ${{ matrix.flags }}
